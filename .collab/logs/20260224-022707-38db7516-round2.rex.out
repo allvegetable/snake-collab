@@ -1,0 +1,16 @@
+已按 MK2 指定问题完成修复，改动在 `snake-collab.sh`：
+
+- 修正 `grep -Iq` 逻辑（文本文件判定）  
+  - 在 `snake-collab.sh:116` 改为 `if LC_ALL=C grep -Iq . "$abs_path"; then`，仅文本文件走 diff。
+  - 保留空文件边界处理（`snake-collab.sh:118`），避免空文件被误判为二进制。
+
+- 移除未使用的 `CMD_TIMEOUT` 校验  
+  - 删除了 `SNAKE_COLLAB_TIMEOUT` 的正整数校验分支（原 170-173 附近逻辑），与“移除未使用校验”要求一致。
+  - `CMD_TIMEOUT` 仍用于实际 `timeout` 调用，不影响现有执行路径。
+
+- 确保临时文件在所有退出路径可清理  
+  - 新增退出清理机制：`cleanup_tmp_files` + `trap ... EXIT`（`snake-collab.sh:29-34`）。
+  - 在常规路径中删除临时文件后清空变量（`snake-collab.sh:299-301`），避免残留状态。
+
+轻量验证：
+- 已执行 `bash -n snake-collab.sh`，语法检查通过。

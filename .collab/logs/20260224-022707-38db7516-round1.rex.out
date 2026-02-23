@@ -1,0 +1,12 @@
+已完成对 `snake-collab.sh` 的聚焦审查和改进，主要修复了几个会影响稳定性的边界问题，并增强了错误处理。
+
+- 在 `snake-collab.sh` 中新增 `is_positive_integer`，统一校验 `MAX_ROUNDS` 和 `SNAKE_COLLAB_TIMEOUT`，避免 `timeout` 接收非法值导致运行期异常。
+- 修复了变更采集盲区：原来只看 unstaged diff，现在通过 `build_change_payload` 同时采集 **unstaged + staged + untracked**，避免 MK2 评审漏看已暂存改动或未跟踪新文件。
+- 为 untracked 文件增加安全处理：文本文件生成 `/dev/null -> file` diff，二进制文件输出明确标记，减少评审信息缺失。
+- 改进 REX 失败分支：若 REX 退出非 0（含超时），现在会写入 `[FINAL_STATUS] REX_FAILED` 并立即退出，避免带着失败状态继续进入 MK2 审查导致误判。
+- 保持了现有脚本风格和执行流程，改动范围仅限本次质量修复任务。
+
+已做轻量验证：
+- `bash -n snake-collab.sh` 语法检查通过。
+- `./snake-collab.sh -h` 帮助输出正常。
+- `SNAKE_COLLAB_TIMEOUT=abc ./snake-collab.sh "x"` 能正确报错并退出。

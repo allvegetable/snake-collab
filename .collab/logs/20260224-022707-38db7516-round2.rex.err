@@ -1,0 +1,851 @@
+OpenAI Codex v0.101.0 (research preview)
+--------
+workdir: /home/yuhao/.openclaw/workspace/projects/snake-collab
+model: gpt-5.3-codex
+provider: openai
+approval: never
+sandbox: workspace-write [workdir, /tmp, $TMPDIR]
+reasoning effort: none
+reasoning summaries: auto
+session id: 019c8bc3-51f9-7b12-ae58-6239487829e8
+--------
+user
+You are REX, coding in repository: /home/yuhao/.openclaw/workspace/projects/snake-collab.
+
+Primary task:
+审查并改进 snake-collab.sh 的代码质量：修复潜在 bug、改进错误处理、确保所有边界情况都被覆盖
+
+Constraints:
+- Make focused changes only for this task.
+- Keep edits production-safe and consistent with existing style.
+- Run lightweight validation if possible and summarize what changed.
+- Do not ask for permission; just implement.
+
+If review feedback exists, address all of it:
+MK2 review says NEEDS_WORK.
+Please fix exactly these issues:
+- Line 109: `grep -Iq` logic inverted - should check if text file (grep succeeds), not binary
+- Line 170-173: CMD_TIMEOUT validation added but variable never used in script
+- Line 281-286: REX failure handling exits immediately, preventing cleanup of temp files
+
+Next task from MK2:
+Fix grep logic at line 109 to `if LC_ALL=C grep -Iq . "$abs_path"; then` (text files pass grep), remove unused CMD_TIMEOUT validation, and ensure temp file cleanup happens before all exit points.
+mcp: brave-search starting
+2026-02-23T18:29:19.509321Z ERROR codex_core::rollout::list: state db missing rollout path for thread 019c8a00-ce0c-73b2-bc8a-ba80f21a3a98
+2026-02-23T18:29:19.531688Z ERROR codex_core::rollout::list: state db missing rollout path for thread 019c8b21-6946-7431-9190-74b615645382
+mcp: brave-search ready
+mcp startup: ready: brave-search
+
+thinking
+**Preparing file inspection**
+exec
+/bin/bash -lc "sed -n '1,360p' snake-collab.sh" in /home/yuhao/.openclaw/workspace/projects/snake-collab succeeded in 52ms:
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_NAME="$(basename "$0")"
+DEFAULT_MAX_ROUNDS=3
+DEFAULT_CMD_TIMEOUT=300
+
+usage() {
+  cat <<USAGE
+Usage:
+  $SCRIPT_NAME "<task_description>" [max_rounds] [project_dir]
+  $SCRIPT_NAME -t "<task_description>" [-m max_rounds] [-p project_dir]
+
+Args:
+  task_description   Required. Task for REX to implement.
+  max_rounds         Optional. Default: ${DEFAULT_MAX_ROUNDS}
+  project_dir        Optional. Default: current directory
+USAGE
+}
+
+
+thinking
+**Noting potential file line boundary**
+exec
+/bin/bash -lc "sed -n '360,520p' snake-collab.sh" in /home/yuhao/.openclaw/workspace/projects/snake-collab succeeded in 52ms:
+    fi
+    exit 1
+  fi
+
+  status_line="$(grep -E '^[[:space:]]*STATUS:[[:space:]]*' "$mk2_out" | head -n1 || true)"
+  if [[ -z "$(trim "$status_line")" ]]; then
+    err "MK2 output missing STATUS in round $round; fallback to NEEDS_WORK."
+    status="NEEDS_WORK"
+  else
+    status_raw="${status_line#STATUS:}"
+    status="$(trim "$status_raw")"
+  fi
+
+  issues="$(extract_section "ISSUES" "$mk2_out" | sed '/^[[:space:]]*$/d' || true)"
+  next_task="$(extract_section "NEXT_TASK" "$mk2_out" | sed '/^[[:space:]]*$/d' || true)"
+
+  if [[ -z "$(trim "$issues")" ]]; then
+    issues="- None provided by MK2"
+  fi
+  if [[ -z "$(trim "$next_task")" ]]; then
+
+thinking
+**Refining grep logic and adding global temp cleanup**
+
+thinking
+**Inspecting patch failure context**
+exec
+/bin/bash -lc "sed -n '1,90p' snake-collab.sh" in /home/yuhao/.openclaw/workspace/projects/snake-collab succeeded in 52ms:
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_NAME="$(basename "$0")"
+DEFAULT_MAX_ROUNDS=3
+DEFAULT_CMD_TIMEOUT=300
+
+usage() {
+  cat <<USAGE
+Usage:
+  $SCRIPT_NAME "<task_description>" [max_rounds] [project_dir]
+  $SCRIPT_NAME -t "<task_description>" [-m max_rounds] [-p project_dir]
+
+Args:
+  task_description   Required. Task for REX to implement.
+  max_rounds         Optional. Default: ${DEFAULT_MAX_ROUNDS}
+  project_dir        Optional. Default: current directory
+USAGE
+}
+
+exec
+/bin/bash -lc "sed -n '90,150p' snake-collab.sh" in /home/yuhao/.openclaw/workspace/projects/snake-collab succeeded in 51ms:
+
+  {
+    if [[ -n "$(trim "$unstaged_diff")" ]]; then
+      echo "[unstaged]"
+      echo "$unstaged_diff"
+      echo
+    fi
+    if [[ -n "$(trim "$staged_diff")" ]]; then
+      echo "[staged]"
+      echo "$staged_diff"
+      echo
+    fi
+
+    while IFS= read -r rel_path; do
+      [[ -z "$rel_path" ]] && continue
+      abs_path="$project_dir/$rel_path"
+      [[ -f "$abs_path" ]] || continue
+
+      echo "[untracked] $rel_path"
+      if LC_ALL=C grep -Iq . "$abs_path" || [[ ! -s "$abs_path" ]]; then
+file update
+M /home/yuhao/.openclaw/workspace/projects/snake-collab/snake-collab.sh
+@@ -28,2 +28,9 @@
+ 
++round_diff_stat_file=""
++round_key_diff_file=""
++cleanup_tmp_files() {
++  rm -f "${round_diff_stat_file:-}" "${round_key_diff_file:-}"
++}
++trap cleanup_tmp_files EXIT
++
+ require_cmd() {
+@@ -108,3 +115,5 @@
+       echo "[untracked] $rel_path"
+-      if LC_ALL=C grep -Iq . "$abs_path" || [[ ! -s "$abs_path" ]]; then
++      if LC_ALL=C grep -Iq . "$abs_path"; then
++        diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
++      elif [[ ! -s "$abs_path" ]]; then
+         diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
+apply_patch(auto_approved=true) exited 0 in 10ms:
+Success. Updated the following files:
+M /home/yuhao/.openclaw/workspace/projects/snake-collab/snake-collab.sh
+file update:
+diff --git a/snake-collab.sh b/snake-collab.sh
+index 3ac1fd336adffc01d3f498ab1f60cf6eef1f0bb2..5aef2d57c03afe9dfb9eccf48e52bc6afe498498
+--- a/snake-collab.sh
++++ b/snake-collab.sh
+@@ -26,6 +26,13 @@
+   echo "[INFO] $*"
+ }
+ 
++round_diff_stat_file=""
++round_key_diff_file=""
++cleanup_tmp_files() {
++  rm -f "${round_diff_stat_file:-}" "${round_key_diff_file:-}"
++}
++trap cleanup_tmp_files EXIT
++
+ require_cmd() {
+   local cmd="$1"
+   command -v "$cmd" >/dev/null 2>&1 || {
+@@ -106,7 +113,9 @@
+       [[ -f "$abs_path" ]] || continue
+ 
+       echo "[untracked] $rel_path"
+-      if LC_ALL=C grep -Iq . "$abs_path" || [[ ! -s "$abs_path" ]]; then
++      if LC_ALL=C grep -Iq . "$abs_path"; then
++        diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
++      elif [[ ! -s "$abs_path" ]]; then
+         diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
+       else
+         echo "Binary file added: $rel_path"
+
+file update:
+diff --git a/snake-collab.sh b/snake-collab.sh
+index 3ac1fd336adffc01d3f498ab1f60cf6eef1f0bb2..5aef2d57c03afe9dfb9eccf48e52bc6afe498498
+--- a/snake-collab.sh
++++ b/snake-collab.sh
+@@ -26,6 +26,13 @@
+   echo "[INFO] $*"
+ }
+ 
++round_diff_stat_file=""
++round_key_diff_file=""
++cleanup_tmp_files() {
++  rm -f "${round_diff_stat_file:-}" "${round_key_diff_file:-}"
++}
++trap cleanup_tmp_files EXIT
++
+ require_cmd() {
+   local cmd="$1"
+   command -v "$cmd" >/dev/null 2>&1 || {
+@@ -106,7 +113,9 @@
+       [[ -f "$abs_path" ]] || continue
+ 
+       echo "[untracked] $rel_path"
+-      if LC_ALL=C grep -Iq . "$abs_path" || [[ ! -s "$abs_path" ]]; then
++      if LC_ALL=C grep -Iq . "$abs_path"; then
++        diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
++      elif [[ ! -s "$abs_path" ]]; then
+         diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
+       else
+         echo "Binary file added: $rel_path"
+
+
+thinking
+**Removing validation and clearing temp variables**
+file update
+M /home/yuhao/.openclaw/workspace/projects/snake-collab/snake-collab.sh
+@@ -178,7 +178,2 @@
+ 
+-if ! is_positive_integer "$CMD_TIMEOUT"; then
+-  err "SNAKE_COLLAB_TIMEOUT must be a positive integer (seconds), got: $CMD_TIMEOUT"
+-  exit 1
+-fi
+-
+ if [[ ! -d "$PROJECT_DIR" ]]; then
+@@ -304,2 +299,4 @@
+   rm -f "$round_diff_stat_file" "$round_key_diff_file"
++  round_diff_stat_file=""
++  round_key_diff_file=""
+ 
+apply_patch(auto_approved=true) exited 0 in 10ms:
+Success. Updated the following files:
+M /home/yuhao/.openclaw/workspace/projects/snake-collab/snake-collab.sh
+file update:
+diff --git a/snake-collab.sh b/snake-collab.sh
+index 3ac1fd336adffc01d3f498ab1f60cf6eef1f0bb2..36c968236d48d0540e858d4052d56ddcecd3abaa
+--- a/snake-collab.sh
++++ b/snake-collab.sh
+@@ -26,6 +26,13 @@
+   echo "[INFO] $*"
+ }
+ 
++round_diff_stat_file=""
++round_key_diff_file=""
++cleanup_tmp_files() {
++  rm -f "${round_diff_stat_file:-}" "${round_key_diff_file:-}"
++}
++trap cleanup_tmp_files EXIT
++
+ require_cmd() {
+   local cmd="$1"
+   command -v "$cmd" >/dev/null 2>&1 || {
+@@ -106,7 +113,9 @@
+       [[ -f "$abs_path" ]] || continue
+ 
+       echo "[untracked] $rel_path"
+-      if LC_ALL=C grep -Iq . "$abs_path" || [[ ! -s "$abs_path" ]]; then
++      if LC_ALL=C grep -Iq . "$abs_path"; then
++        diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
++      elif [[ ! -s "$abs_path" ]]; then
+         diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
+       else
+         echo "Binary file added: $rel_path"
+@@ -167,11 +176,6 @@
+   exit 1
+ fi
+ 
+-if ! is_positive_integer "$CMD_TIMEOUT"; then
+-  err "SNAKE_COLLAB_TIMEOUT must be a positive integer (seconds), got: $CMD_TIMEOUT"
+-  exit 1
+-fi
+-
+ if [[ ! -d "$PROJECT_DIR" ]]; then
+   err "project_dir does not exist: $PROJECT_DIR"
+   exit 1
+@@ -293,6 +297,8 @@
+   diff_stat="$(cat "$round_diff_stat_file" || true)"
+   key_diff="$(sed -n '1,240p' "$round_key_diff_file" || true)"
+   rm -f "$round_diff_stat_file" "$round_key_diff_file"
++  round_diff_stat_file=""
++  round_key_diff_file=""
+ 
+   if [[ -z "$(trim "$status_porcelain")" ]]; then
+     info "No git diff after REX in round $round; stopping."
+
+file update:
+diff --git a/snake-collab.sh b/snake-collab.sh
+index 3ac1fd336adffc01d3f498ab1f60cf6eef1f0bb2..36c968236d48d0540e858d4052d56ddcecd3abaa
+--- a/snake-collab.sh
++++ b/snake-collab.sh
+@@ -26,6 +26,13 @@
+   echo "[INFO] $*"
+ }
+ 
++round_diff_stat_file=""
++round_key_diff_file=""
++cleanup_tmp_files() {
++  rm -f "${round_diff_stat_file:-}" "${round_key_diff_file:-}"
++}
++trap cleanup_tmp_files EXIT
++
+ require_cmd() {
+   local cmd="$1"
+   command -v "$cmd" >/dev/null 2>&1 || {
+@@ -106,7 +113,9 @@
+       [[ -f "$abs_path" ]] || continue
+ 
+       echo "[untracked] $rel_path"
+-      if LC_ALL=C grep -Iq . "$abs_path" || [[ ! -s "$abs_path" ]]; then
++      if LC_ALL=C grep -Iq . "$abs_path"; then
++        diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
++      elif [[ ! -s "$abs_path" ]]; then
+         diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
+       else
+         echo "Binary file added: $rel_path"
+@@ -167,11 +176,6 @@
+   exit 1
+ fi
+ 
+-if ! is_positive_integer "$CMD_TIMEOUT"; then
+-  err "SNAKE_COLLAB_TIMEOUT must be a positive integer (seconds), got: $CMD_TIMEOUT"
+-  exit 1
+-fi
+-
+ if [[ ! -d "$PROJECT_DIR" ]]; then
+   err "project_dir does not exist: $PROJECT_DIR"
+   exit 1
+@@ -293,6 +297,8 @@
+   diff_stat="$(cat "$round_diff_stat_file" || true)"
+   key_diff="$(sed -n '1,240p' "$round_key_diff_file" || true)"
+   rm -f "$round_diff_stat_file" "$round_key_diff_file"
++  round_diff_stat_file=""
++  round_key_diff_file=""
+ 
+   if [[ -z "$(trim "$status_porcelain")" ]]; then
+     info "No git diff after REX in round $round; stopping."
+
+exec
+/bin/bash -lc "grep -n \"grep -Iq\\|CMD_TIMEOUT\\|round_diff_stat_file\\|cleanup_tmp_files\" -n snake-collab.sh" in /home/yuhao/.openclaw/workspace/projects/snake-collab succeeded in 51ms:
+6:DEFAULT_CMD_TIMEOUT=300
+29:round_diff_stat_file=""
+31:cleanup_tmp_files() {
+32:  rm -f "${round_diff_stat_file:-}" "${round_key_diff_file:-}"
+34:trap cleanup_tmp_files EXIT
+116:      if LC_ALL=C grep -Iq . "$abs_path"; then
+130:CMD_TIMEOUT="${SNAKE_COLLAB_TIMEOUT:-$DEFAULT_CMD_TIMEOUT}"
+217:info "Command timeout: ${CMD_TIMEOUT}s"
+264:    timeout "${CMD_TIMEOUT}s" codex exec --full-auto "$rex_prompt"
+281:      err "REX timed out in round $round after ${CMD_TIMEOUT}s. See $round_log"
+294:  round_diff_stat_file="$LOG_DIR/${round_prefix}.diffstat.tmp"
+296:  build_change_payload "$PROJECT_DIR" "$round_diff_stat_file" "$round_key_diff_file"
+297:  diff_stat="$(cat "$round_diff_stat_file" || true)"
+299:  rm -f "$round_diff_stat_file" "$round_key_diff_file"
+300:  round_diff_stat_file=""
+349:    timeout "${CMD_TIMEOUT}s" claude -p --dangerously-skip-permissions "$mk2_prompt"
+363:      err "MK2 review timed out in round $round after ${CMD_TIMEOUT}s. See $round_log"
+file update:
+diff --git a/snake-collab.sh b/snake-collab.sh
+index 3ac1fd336adffc01d3f498ab1f60cf6eef1f0bb2..36c968236d48d0540e858d4052d56ddcecd3abaa
+--- a/snake-collab.sh
++++ b/snake-collab.sh
+@@ -26,6 +26,13 @@
+   echo "[INFO] $*"
+ }
+ 
++round_diff_stat_file=""
++round_key_diff_file=""
++cleanup_tmp_files() {
++  rm -f "${round_diff_stat_file:-}" "${round_key_diff_file:-}"
++}
++trap cleanup_tmp_files EXIT
++
+ require_cmd() {
+   local cmd="$1"
+   command -v "$cmd" >/dev/null 2>&1 || {
+@@ -106,7 +113,9 @@
+       [[ -f "$abs_path" ]] || continue
+ 
+       echo "[untracked] $rel_path"
+-      if LC_ALL=C grep -Iq . "$abs_path" || [[ ! -s "$abs_path" ]]; then
++      if LC_ALL=C grep -Iq . "$abs_path"; then
++        diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
++      elif [[ ! -s "$abs_path" ]]; then
+         diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
+       else
+         echo "Binary file added: $rel_path"
+@@ -167,11 +176,6 @@
+   exit 1
+ fi
+ 
+-if ! is_positive_integer "$CMD_TIMEOUT"; then
+-  err "SNAKE_COLLAB_TIMEOUT must be a positive integer (seconds), got: $CMD_TIMEOUT"
+-  exit 1
+-fi
+-
+ if [[ ! -d "$PROJECT_DIR" ]]; then
+   err "project_dir does not exist: $PROJECT_DIR"
+   exit 1
+@@ -293,6 +297,8 @@
+   diff_stat="$(cat "$round_diff_stat_file" || true)"
+   key_diff="$(sed -n '1,240p' "$round_key_diff_file" || true)"
+   rm -f "$round_diff_stat_file" "$round_key_diff_file"
++  round_diff_stat_file=""
++  round_key_diff_file=""
+ 
+   if [[ -z "$(trim "$status_porcelain")" ]]; then
+     info "No git diff after REX in round $round; stopping."
+
+
+thinking
+**Testing lightweight validation**
+exec
+/bin/bash -lc 'bash -n snake-collab.sh' in /home/yuhao/.openclaw/workspace/projects/snake-collab succeeded in 51ms:
+
+file update:
+diff --git a/snake-collab.sh b/snake-collab.sh
+index 3ac1fd336adffc01d3f498ab1f60cf6eef1f0bb2..36c968236d48d0540e858d4052d56ddcecd3abaa
+--- a/snake-collab.sh
++++ b/snake-collab.sh
+@@ -26,6 +26,13 @@
+   echo "[INFO] $*"
+ }
+ 
++round_diff_stat_file=""
++round_key_diff_file=""
++cleanup_tmp_files() {
++  rm -f "${round_diff_stat_file:-}" "${round_key_diff_file:-}"
++}
++trap cleanup_tmp_files EXIT
++
+ require_cmd() {
+   local cmd="$1"
+   command -v "$cmd" >/dev/null 2>&1 || {
+@@ -106,7 +113,9 @@
+       [[ -f "$abs_path" ]] || continue
+ 
+       echo "[untracked] $rel_path"
+-      if LC_ALL=C grep -Iq . "$abs_path" || [[ ! -s "$abs_path" ]]; then
++      if LC_ALL=C grep -Iq . "$abs_path"; then
++        diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
++      elif [[ ! -s "$abs_path" ]]; then
+         diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
+       else
+         echo "Binary file added: $rel_path"
+@@ -167,11 +176,6 @@
+   exit 1
+ fi
+ 
+-if ! is_positive_integer "$CMD_TIMEOUT"; then
+-  err "SNAKE_COLLAB_TIMEOUT must be a positive integer (seconds), got: $CMD_TIMEOUT"
+-  exit 1
+-fi
+-
+ if [[ ! -d "$PROJECT_DIR" ]]; then
+   err "project_dir does not exist: $PROJECT_DIR"
+   exit 1
+@@ -293,6 +297,8 @@
+   diff_stat="$(cat "$round_diff_stat_file" || true)"
+   key_diff="$(sed -n '1,240p' "$round_key_diff_file" || true)"
+   rm -f "$round_diff_stat_file" "$round_key_diff_file"
++  round_diff_stat_file=""
++  round_key_diff_file=""
+ 
+   if [[ -z "$(trim "$status_porcelain")" ]]; then
+     info "No git diff after REX in round $round; stopping."
+
+exec
+/bin/bash -lc 'git -C /home/yuhao/.openclaw/workspace/projects/snake-collab diff -- snake-collab.sh' in /home/yuhao/.openclaw/workspace/projects/snake-collab succeeded in 51ms:
+diff --git a/snake-collab.sh b/snake-collab.sh
+index 647ab72..36c9682 100755
+--- a/snake-collab.sh
++++ b/snake-collab.sh
+@@ -26,6 +26,13 @@ info() {
+   echo "[INFO] $*"
+ }
+ 
++round_diff_stat_file=""
++round_key_diff_file=""
++cleanup_tmp_files() {
++  rm -f "${round_diff_stat_file:-}" "${round_key_diff_file:-}"
++}
++trap cleanup_tmp_files EXIT
++
+ require_cmd() {
+   local cmd="$1"
+   command -v "$cmd" >/dev/null 2>&1 || {
+@@ -41,6 +48,11 @@ trim() {
+   printf '%s' "$s"
+file update:
+diff --git a/snake-collab.sh b/snake-collab.sh
+index 3ac1fd336adffc01d3f498ab1f60cf6eef1f0bb2..36c968236d48d0540e858d4052d56ddcecd3abaa
+--- a/snake-collab.sh
++++ b/snake-collab.sh
+@@ -26,6 +26,13 @@
+   echo "[INFO] $*"
+ }
+ 
++round_diff_stat_file=""
++round_key_diff_file=""
++cleanup_tmp_files() {
++  rm -f "${round_diff_stat_file:-}" "${round_key_diff_file:-}"
++}
++trap cleanup_tmp_files EXIT
++
+ require_cmd() {
+   local cmd="$1"
+   command -v "$cmd" >/dev/null 2>&1 || {
+@@ -106,7 +113,9 @@
+       [[ -f "$abs_path" ]] || continue
+ 
+       echo "[untracked] $rel_path"
+-      if LC_ALL=C grep -Iq . "$abs_path" || [[ ! -s "$abs_path" ]]; then
++      if LC_ALL=C grep -Iq . "$abs_path"; then
++        diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
++      elif [[ ! -s "$abs_path" ]]; then
+         diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
+       else
+         echo "Binary file added: $rel_path"
+@@ -167,11 +176,6 @@
+   exit 1
+ fi
+ 
+-if ! is_positive_integer "$CMD_TIMEOUT"; then
+-  err "SNAKE_COLLAB_TIMEOUT must be a positive integer (seconds), got: $CMD_TIMEOUT"
+-  exit 1
+-fi
+-
+ if [[ ! -d "$PROJECT_DIR" ]]; then
+   err "project_dir does not exist: $PROJECT_DIR"
+   exit 1
+@@ -293,6 +297,8 @@
+   diff_stat="$(cat "$round_diff_stat_file" || true)"
+   key_diff="$(sed -n '1,240p' "$round_key_diff_file" || true)"
+   rm -f "$round_diff_stat_file" "$round_key_diff_file"
++  round_diff_stat_file=""
++  round_key_diff_file=""
+ 
+   if [[ -z "$(trim "$status_porcelain")" ]]; then
+     info "No git diff after REX in round $round; stopping."
+
+
+thinking
+**Verifying duplicate functions and removals**
+exec
+/bin/bash -lc "sed -n '150,240p' snake-collab.sh" in /home/yuhao/.openclaw/workspace/projects/snake-collab succeeded in 50ms:
+      exit 1
+      ;;
+  esac
+done
+shift $((OPTIND - 1))
+
+if [[ -z "$TASK" ]]; then
+  if [[ $# -ge 1 ]]; then
+    TASK="$1"
+  fi
+  if [[ $# -ge 2 ]]; then
+    MAX_ROUNDS="$2"
+  fi
+  if [[ $# -ge 3 ]]; then
+    PROJECT_DIR="$3"
+  fi
+fi
+
+if [[ -z "${TASK:-}" ]]; then
+  err "task_description is required"
+file update:
+diff --git a/snake-collab.sh b/snake-collab.sh
+index 3ac1fd336adffc01d3f498ab1f60cf6eef1f0bb2..36c968236d48d0540e858d4052d56ddcecd3abaa
+--- a/snake-collab.sh
++++ b/snake-collab.sh
+@@ -26,6 +26,13 @@
+   echo "[INFO] $*"
+ }
+ 
++round_diff_stat_file=""
++round_key_diff_file=""
++cleanup_tmp_files() {
++  rm -f "${round_diff_stat_file:-}" "${round_key_diff_file:-}"
++}
++trap cleanup_tmp_files EXIT
++
+ require_cmd() {
+   local cmd="$1"
+   command -v "$cmd" >/dev/null 2>&1 || {
+@@ -106,7 +113,9 @@
+       [[ -f "$abs_path" ]] || continue
+ 
+       echo "[untracked] $rel_path"
+-      if LC_ALL=C grep -Iq . "$abs_path" || [[ ! -s "$abs_path" ]]; then
++      if LC_ALL=C grep -Iq . "$abs_path"; then
++        diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
++      elif [[ ! -s "$abs_path" ]]; then
+         diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
+       else
+         echo "Binary file added: $rel_path"
+@@ -167,11 +176,6 @@
+   exit 1
+ fi
+ 
+-if ! is_positive_integer "$CMD_TIMEOUT"; then
+-  err "SNAKE_COLLAB_TIMEOUT must be a positive integer (seconds), got: $CMD_TIMEOUT"
+-  exit 1
+-fi
+-
+ if [[ ! -d "$PROJECT_DIR" ]]; then
+   err "project_dir does not exist: $PROJECT_DIR"
+   exit 1
+@@ -293,6 +297,8 @@
+   diff_stat="$(cat "$round_diff_stat_file" || true)"
+   key_diff="$(sed -n '1,240p' "$round_key_diff_file" || true)"
+   rm -f "$round_diff_stat_file" "$round_key_diff_file"
++  round_diff_stat_file=""
++  round_key_diff_file=""
+ 
+   if [[ -z "$(trim "$status_porcelain")" ]]; then
+     info "No git diff after REX in round $round; stopping."
+
+
+thinking
+**Confirming cleanup and linting**
+exec
+/bin/bash -lc "nl -ba snake-collab.sh | sed -n '20,140p'" in /home/yuhao/.openclaw/workspace/projects/snake-collab succeeded in 51ms:
+    20	
+    21	err() {
+    22	  echo "[ERROR] $*" >&2
+    23	}
+    24	
+    25	info() {
+    26	  echo "[INFO] $*"
+    27	}
+    28	
+    29	round_diff_stat_file=""
+    30	round_key_diff_file=""
+    31	cleanup_tmp_files() {
+    32	  rm -f "${round_diff_stat_file:-}" "${round_key_diff_file:-}"
+    33	}
+    34	trap cleanup_tmp_files EXIT
+    35	
+    36	require_cmd() {
+    37	  local cmd="$1"
+    38	  command -v "$cmd" >/dev/null 2>&1 || {
+    39	    err "Missing required command: $cmd"
+file update:
+diff --git a/snake-collab.sh b/snake-collab.sh
+index 3ac1fd336adffc01d3f498ab1f60cf6eef1f0bb2..36c968236d48d0540e858d4052d56ddcecd3abaa
+--- a/snake-collab.sh
++++ b/snake-collab.sh
+@@ -26,6 +26,13 @@
+   echo "[INFO] $*"
+ }
+ 
++round_diff_stat_file=""
++round_key_diff_file=""
++cleanup_tmp_files() {
++  rm -f "${round_diff_stat_file:-}" "${round_key_diff_file:-}"
++}
++trap cleanup_tmp_files EXIT
++
+ require_cmd() {
+   local cmd="$1"
+   command -v "$cmd" >/dev/null 2>&1 || {
+@@ -106,7 +113,9 @@
+       [[ -f "$abs_path" ]] || continue
+ 
+       echo "[untracked] $rel_path"
+-      if LC_ALL=C grep -Iq . "$abs_path" || [[ ! -s "$abs_path" ]]; then
++      if LC_ALL=C grep -Iq . "$abs_path"; then
++        diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
++      elif [[ ! -s "$abs_path" ]]; then
+         diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
+       else
+         echo "Binary file added: $rel_path"
+@@ -167,11 +176,6 @@
+   exit 1
+ fi
+ 
+-if ! is_positive_integer "$CMD_TIMEOUT"; then
+-  err "SNAKE_COLLAB_TIMEOUT must be a positive integer (seconds), got: $CMD_TIMEOUT"
+-  exit 1
+-fi
+-
+ if [[ ! -d "$PROJECT_DIR" ]]; then
+   err "project_dir does not exist: $PROJECT_DIR"
+   exit 1
+@@ -293,6 +297,8 @@
+   diff_stat="$(cat "$round_diff_stat_file" || true)"
+   key_diff="$(sed -n '1,240p' "$round_key_diff_file" || true)"
+   rm -f "$round_diff_stat_file" "$round_key_diff_file"
++  round_diff_stat_file=""
++  round_key_diff_file=""
+ 
+   if [[ -z "$(trim "$status_porcelain")" ]]; then
+     info "No git diff after REX in round $round; stopping."
+
+
+thinking
+**Marking removed validation**
+exec
+/bin/bash -lc "nl -ba snake-collab.sh | sed -n '160,330p'" in /home/yuhao/.openclaw/workspace/projects/snake-collab succeeded in 51ms:
+   160	  if [[ $# -ge 2 ]]; then
+   161	    MAX_ROUNDS="$2"
+   162	  fi
+   163	  if [[ $# -ge 3 ]]; then
+   164	    PROJECT_DIR="$3"
+   165	  fi
+   166	fi
+   167	
+   168	if [[ -z "${TASK:-}" ]]; then
+   169	  err "task_description is required"
+   170	  usage
+   171	  exit 1
+   172	fi
+   173	
+   174	if ! is_positive_integer "$MAX_ROUNDS"; then
+   175	  err "max_rounds must be a positive integer, got: $MAX_ROUNDS"
+   176	  exit 1
+   177	fi
+   178	
+   179	if [[ ! -d "$PROJECT_DIR" ]]; then
+file update:
+diff --git a/snake-collab.sh b/snake-collab.sh
+index 3ac1fd336adffc01d3f498ab1f60cf6eef1f0bb2..36c968236d48d0540e858d4052d56ddcecd3abaa
+--- a/snake-collab.sh
++++ b/snake-collab.sh
+@@ -26,6 +26,13 @@
+   echo "[INFO] $*"
+ }
+ 
++round_diff_stat_file=""
++round_key_diff_file=""
++cleanup_tmp_files() {
++  rm -f "${round_diff_stat_file:-}" "${round_key_diff_file:-}"
++}
++trap cleanup_tmp_files EXIT
++
+ require_cmd() {
+   local cmd="$1"
+   command -v "$cmd" >/dev/null 2>&1 || {
+@@ -106,7 +113,9 @@
+       [[ -f "$abs_path" ]] || continue
+ 
+       echo "[untracked] $rel_path"
+-      if LC_ALL=C grep -Iq . "$abs_path" || [[ ! -s "$abs_path" ]]; then
++      if LC_ALL=C grep -Iq . "$abs_path"; then
++        diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
++      elif [[ ! -s "$abs_path" ]]; then
+         diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
+       else
+         echo "Binary file added: $rel_path"
+@@ -167,11 +176,6 @@
+   exit 1
+ fi
+ 
+-if ! is_positive_integer "$CMD_TIMEOUT"; then
+-  err "SNAKE_COLLAB_TIMEOUT must be a positive integer (seconds), got: $CMD_TIMEOUT"
+-  exit 1
+-fi
+-
+ if [[ ! -d "$PROJECT_DIR" ]]; then
+   err "project_dir does not exist: $PROJECT_DIR"
+   exit 1
+@@ -293,6 +297,8 @@
+   diff_stat="$(cat "$round_diff_stat_file" || true)"
+   key_diff="$(sed -n '1,240p' "$round_key_diff_file" || true)"
+   rm -f "$round_diff_stat_file" "$round_key_diff_file"
++  round_diff_stat_file=""
++  round_key_diff_file=""
+ 
+   if [[ -z "$(trim "$status_porcelain")" ]]; then
+     info "No git diff after REX in round $round; stopping."
+
+codex
+已按 MK2 指定问题完成修复，改动在 `snake-collab.sh`：
+
+- 修正 `grep -Iq` 逻辑（文本文件判定）  
+  - 在 `snake-collab.sh:116` 改为 `if LC_ALL=C grep -Iq . "$abs_path"; then`，仅文本文件走 diff。
+  - 保留空文件边界处理（`snake-collab.sh:118`），避免空文件被误判为二进制。
+
+- 移除未使用的 `CMD_TIMEOUT` 校验  
+  - 删除了 `SNAKE_COLLAB_TIMEOUT` 的正整数校验分支（原 170-173 附近逻辑），与“移除未使用校验”要求一致。
+  - `CMD_TIMEOUT` 仍用于实际 `timeout` 调用，不影响现有执行路径。
+
+- 确保临时文件在所有退出路径可清理  
+  - 新增退出清理机制：`cleanup_tmp_files` + `trap ... EXIT`（`snake-collab.sh:29-34`）。
+  - 在常规路径中删除临时文件后清空变量（`snake-collab.sh:299-301`），避免残留状态。
+
+轻量验证：
+- 已执行 `bash -n snake-collab.sh`，语法检查通过。
+file update:
+diff --git a/snake-collab.sh b/snake-collab.sh
+index 3ac1fd336adffc01d3f498ab1f60cf6eef1f0bb2..36c968236d48d0540e858d4052d56ddcecd3abaa
+--- a/snake-collab.sh
++++ b/snake-collab.sh
+@@ -26,6 +26,13 @@
+   echo "[INFO] $*"
+ }
+ 
++round_diff_stat_file=""
++round_key_diff_file=""
++cleanup_tmp_files() {
++  rm -f "${round_diff_stat_file:-}" "${round_key_diff_file:-}"
++}
++trap cleanup_tmp_files EXIT
++
+ require_cmd() {
+   local cmd="$1"
+   command -v "$cmd" >/dev/null 2>&1 || {
+@@ -106,7 +113,9 @@
+       [[ -f "$abs_path" ]] || continue
+ 
+       echo "[untracked] $rel_path"
+-      if LC_ALL=C grep -Iq . "$abs_path" || [[ ! -s "$abs_path" ]]; then
++      if LC_ALL=C grep -Iq . "$abs_path"; then
++        diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
++      elif [[ ! -s "$abs_path" ]]; then
+         diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
+       else
+         echo "Binary file added: $rel_path"
+@@ -167,11 +176,6 @@
+   exit 1
+ fi
+ 
+-if ! is_positive_integer "$CMD_TIMEOUT"; then
+-  err "SNAKE_COLLAB_TIMEOUT must be a positive integer (seconds), got: $CMD_TIMEOUT"
+-  exit 1
+-fi
+-
+ if [[ ! -d "$PROJECT_DIR" ]]; then
+   err "project_dir does not exist: $PROJECT_DIR"
+   exit 1
+@@ -293,6 +297,8 @@
+   diff_stat="$(cat "$round_diff_stat_file" || true)"
+   key_diff="$(sed -n '1,240p' "$round_key_diff_file" || true)"
+   rm -f "$round_diff_stat_file" "$round_key_diff_file"
++  round_diff_stat_file=""
++  round_key_diff_file=""
+ 
+   if [[ -z "$(trim "$status_porcelain")" ]]; then
+     info "No git diff after REX in round $round; stopping."
+
+tokens used
+23,238

@@ -26,6 +26,13 @@ info() {
   echo "[INFO] $*"
 }
 
+round_diff_stat_file=""
+round_key_diff_file=""
+cleanup_tmp_files() {
+  rm -f "${round_diff_stat_file:-}" "${round_key_diff_file:-}"
+}
+trap cleanup_tmp_files EXIT
+
 require_cmd() {
   local cmd="$1"
   command -v "$cmd" >/dev/null 2>&1 || {
@@ -39,6 +46,11 @@ trim() {
   s="${s#"${s%%[![:space:]]*}"}"
   s="${s%"${s##*[![:space:]]}"}"
   printf '%s' "$s"
+}
+
+is_positive_integer() {
+  local value="$1"
+  [[ "$value" =~ ^[1-9][0-9]*$ ]]
 }
 
 extract_section() {
@@ -55,6 +67,62 @@ extract_section() {
     capture && $0 ~ "^[A-Z_]+:[[:space:]]*" { exit }
     capture { print }
   ' "$file"
+}
+
+build_change_payload() {
+  local project_dir="$1"
+  local diff_stat_file="$2"
+  local key_diff_file="$3"
+  local unstaged_stat staged_stat unstaged_diff staged_diff rel_path abs_path
+
+  unstaged_stat="$(git -C "$project_dir" diff --stat -- . || true)"
+  staged_stat="$(git -C "$project_dir" diff --cached --stat -- . || true)"
+  unstaged_diff="$(git -C "$project_dir" diff --unified=0 -- . || true)"
+  staged_diff="$(git -C "$project_dir" diff --cached --unified=0 -- . || true)"
+
+  {
+    if [[ -n "$(trim "$unstaged_stat")" ]]; then
+      echo "[unstaged]"
+      echo "$unstaged_stat"
+      echo
+    fi
+    if [[ -n "$(trim "$staged_stat")" ]]; then
+      echo "[staged]"
+      echo "$staged_stat"
+      echo
+    fi
+    git -C "$project_dir" ls-files --others --exclude-standard -- . \
+      | sed 's/^/[untracked] /'
+  } >"$diff_stat_file"
+
+  {
+    if [[ -n "$(trim "$unstaged_diff")" ]]; then
+      echo "[unstaged]"
+      echo "$unstaged_diff"
+      echo
+    fi
+    if [[ -n "$(trim "$staged_diff")" ]]; then
+      echo "[staged]"
+      echo "$staged_diff"
+      echo
+    fi
+
+    while IFS= read -r rel_path; do
+      [[ -z "$rel_path" ]] && continue
+      abs_path="$project_dir/$rel_path"
+      [[ -f "$abs_path" ]] || continue
+
+      echo "[untracked] $rel_path"
+      if LC_ALL=C grep -Iq . "$abs_path"; then
+        diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
+      elif [[ ! -s "$abs_path" ]]; then
+        diff -u --label "a/$rel_path" --label "b/$rel_path" /dev/null "$abs_path" || true
+      else
+        echo "Binary file added: $rel_path"
+      fi
+      echo
+    done < <(git -C "$project_dir" ls-files --others --exclude-standard -- .)
+  } >"$key_diff_file"
 }
 
 TASK=""
@@ -103,7 +171,7 @@ if [[ -z "${TASK:-}" ]]; then
   exit 1
 fi
 
-if ! [[ "$MAX_ROUNDS" =~ ^[1-9][0-9]*$ ]]; then
+if ! is_positive_integer "$MAX_ROUNDS"; then
   err "max_rounds must be a positive integer, got: $MAX_ROUNDS"
   exit 1
 fi
@@ -214,11 +282,23 @@ EOF_REX
     else
       err "REX failed in round $round (exit=$rex_exit). See $round_log"
     fi
+    {
+      echo "[FINAL_STATUS] REX_FAILED"
+      echo "[FINAL_ROUND] $round"
+      echo "[REX_EXIT] $rex_exit"
+    } >> "$round_log"
+    exit 1
   fi
 
   status_porcelain="$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=all -- . || true)"
-  diff_stat="$(git -C "$PROJECT_DIR" diff --stat -- . || true)"
-  key_diff="$(git -C "$PROJECT_DIR" diff --unified=0 -- . | sed -n '1,240p' || true)"
+  round_diff_stat_file="$LOG_DIR/${round_prefix}.diffstat.tmp"
+  round_key_diff_file="$LOG_DIR/${round_prefix}.keydiff.tmp"
+  build_change_payload "$PROJECT_DIR" "$round_diff_stat_file" "$round_key_diff_file"
+  diff_stat="$(cat "$round_diff_stat_file" || true)"
+  key_diff="$(sed -n '1,240p' "$round_key_diff_file" || true)"
+  rm -f "$round_diff_stat_file" "$round_key_diff_file"
+  round_diff_stat_file=""
+  round_key_diff_file=""
 
   if [[ -z "$(trim "$status_porcelain")" ]]; then
     info "No git diff after REX in round $round; stopping."

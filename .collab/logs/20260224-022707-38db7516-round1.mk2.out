@@ -1,0 +1,9 @@
+STATUS: NEEDS_WORK
+
+ISSUES:
+- Line 109: `grep -Iq` logic inverted - should check if text file (grep succeeds), not binary
+- Line 170-173: CMD_TIMEOUT validation added but variable never used in script
+- Line 281-286: REX failure handling exits immediately, preventing cleanup of temp files
+
+NEXT_TASK:
+Fix grep logic at line 109 to `if LC_ALL=C grep -Iq . "$abs_path"; then` (text files pass grep), remove unused CMD_TIMEOUT validation, and ensure temp file cleanup happens before all exit points.

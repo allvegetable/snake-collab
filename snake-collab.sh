@@ -131,6 +131,11 @@ if [[ -z "${OPENAI_BASE_URL:-}" ]]; then
   err "OPENAI_BASE_URL is required for REX (codex)"
   exit 1
 fi
+if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+  err "ANTHROPIC_API_KEY is required for MK2 (claude)"
+  exit 1
+fi
+ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-https://your-anthropic-base-url}"
 
 if ! git -C "$PROJECT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   err "project_dir is not a git repository: $PROJECT_DIR"
@@ -188,7 +193,7 @@ EOF_REX
     cd "$PROJECT_DIR"
     OPENAI_API_KEY="$OPENAI_API_KEY" \
     OPENAI_BASE_URL="$OPENAI_BASE_URL" \
-    timeout "${CMD_TIMEOUT}s" codex exec "$rex_prompt"
+    timeout "${CMD_TIMEOUT}s" codex exec --full-auto "$rex_prompt"
   ) >"$rex_out" 2>"$rex_err"
   rex_exit=$?
   set -e
@@ -204,13 +209,18 @@ EOF_REX
   } >> "$round_log"
 
   if [[ $rex_exit -ne 0 ]]; then
-    err "REX failed in round $round (exit=$rex_exit). See $round_log"
+    if [[ $rex_exit -eq 124 ]]; then
+      err "REX timed out in round $round after ${CMD_TIMEOUT}s. See $round_log"
+    else
+      err "REX failed in round $round (exit=$rex_exit). See $round_log"
+    fi
   fi
 
+  status_porcelain="$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=all -- . || true)"
   diff_stat="$(git -C "$PROJECT_DIR" diff --stat -- . || true)"
   key_diff="$(git -C "$PROJECT_DIR" diff --unified=0 -- . | sed -n '1,240p' || true)"
 
-  if [[ -z "$(trim "$diff_stat")" ]]; then
+  if [[ -z "$(trim "$status_porcelain")" ]]; then
     info "No git diff after REX in round $round; stopping."
     {
       echo "[MK2_SKIPPED] No changes detected"
@@ -252,9 +262,10 @@ EOF_MK2
   set +e
   (
     cd "$PROJECT_DIR"
-    ANTHROPIC_BASE_URL="https://your-anthropic-base-url" \
-    ANTHROPIC_API_KEY="sk-[REDACTED-PENGUIN-KEY]" \
-    HTTPS_PROXY="http://127.0.0.1:7897" \
+    export ANTHROPIC_BASE_URL ANTHROPIC_API_KEY
+    if [[ -n "${HTTPS_PROXY:-}" ]]; then
+      export HTTPS_PROXY
+    fi
     timeout "${CMD_TIMEOUT}s" claude -p --dangerously-skip-permissions "$mk2_prompt"
   ) >"$mk2_out" 2>>"$round_log"
   mk2_exit=$?
@@ -268,11 +279,15 @@ EOF_MK2
   } >> "$round_log"
 
   if [[ $mk2_exit -ne 0 ]]; then
-    err "MK2 review failed in round $round (exit=$mk2_exit). See $round_log"
+    if [[ $mk2_exit -eq 124 ]]; then
+      err "MK2 review timed out in round $round after ${CMD_TIMEOUT}s. See $round_log"
+    else
+      err "MK2 review failed in round $round (exit=$mk2_exit). See $round_log"
+    fi
     exit 1
   fi
 
-  status_line="$(grep -E '^STATUS:[[:space:]]*' "$mk2_out" | head -n1 || true)"
+  status_line="$(grep -E '^[[:space:]]*STATUS:[[:space:]]*' "$mk2_out" | head -n1 || true)"
   if [[ -z "$(trim "$status_line")" ]]; then
     err "MK2 output missing STATUS in round $round; fallback to NEEDS_WORK."
     status="NEEDS_WORK"
@@ -283,6 +298,13 @@ EOF_MK2
 
   issues="$(extract_section "ISSUES" "$mk2_out" | sed '/^[[:space:]]*$/d' || true)"
   next_task="$(extract_section "NEXT_TASK" "$mk2_out" | sed '/^[[:space:]]*$/d' || true)"
+
+  if [[ -z "$(trim "$issues")" ]]; then
+    issues="- None provided by MK2"
+  fi
+  if [[ -z "$(trim "$next_task")" ]]; then
+    next_task="No next task provided by MK2"
+  fi
 
   if [[ "$status" != "LGTM" && "$status" != "NEEDS_WORK" ]]; then
     err "Invalid MK2 STATUS in round $round: '$status'. See $mk2_out"
